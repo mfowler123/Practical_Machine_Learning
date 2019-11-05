@@ -1,0 +1,139 @@
+---
+title: "Predicting Quality Barbell Lifts"
+author: "Mary"
+date: "October 14, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+##Executive Summary
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The goal of your project was to predict the manner in which they did the exercise. This is the "classe" variable in the training set. The other variables in the data set were used to predict with. 
+
+A Generalized Boosted Model and a Random Forest Model was used to develop a prediction function. Cross validation was used for each method.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(AppliedPredictiveModeling)
+library(ElemStatLearn)
+library(pgmm)
+library(rpart)
+library(dplyr)
+library(gridExtra)
+library(gbm)
+library(lubridate)
+library(forecast)
+library(e1071)
+library(MASS)
+library(tidyverse)
+```
+
+##Read in and clean data
+```{r}
+testing <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv")
+```
+
+```{r}
+set.seed(1234)
+inTrain <- createDataPartition(y=training$classe,
+                              p=0.75, list=FALSE)
+trainSet <- training[inTrain,]
+testSet <- training[-inTrain,]
+```
+
+remove identifying columns, first five columns from both data sets
+```{r}
+testSet <- testSet[,-(1:5)]
+trainSet <- trainSet[,-(1:5)]
+```
+
+Remove coluums that are all NA or blank
+```{r}
+trainSet <- trainSet
+trainSet[trainSet ==""]<-NA
+trainSet <- trainSet[,colSums(is.na(trainSet))<1]
+```
+
+Remove variables with near zero variance
+```{r}
+NZV <- nearZeroVar(trainSet)
+trainSet <- trainSet[, -NZV]
+dim(trainSet)
+dim(testSet)
+```
+
+find col_names in trainSet and choose the same cols in trainSet
+```{r}
+cn <- colnames(trainSet)
+testSet <- testSet[,cn[1:length(cn)]]
+```
+
+#First Method: Generalized Boosted Model
+```{r}
+set.seed(1234)
+library(gbm)
+```
+
+```{r}
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+model_Fit_GBM <- train(classe ~., method = "gbm", trControl = controlGBM,data = trainSet, verbose = FALSE)
+model_Fit_GBM$finalModel
+```
+
+Calculate the confusion matrix for trainSet
+```{r}
+predict_GBM_test <- predict(model_Fit_GBM, newdata=trainSet)
+confusionMatrix(predict_GBM_test, trainSet$classe)
+```
+The In sample error = 1 - 0.9936 = 0.0064
+
+Calculate the confusion matrix for testSet
+```{r}
+predict_GBM_test <- predict(model_Fit_GBM, newdata=testSet)
+CM_GBM <- confusionMatrix(predict_GBM_test, testSet$classe)
+CM_GBM
+```
+The out of sample error = 1 - 0.9876 = 0.0124
+
+
+#Second Method: Random Forest Model
+```{r}
+set.seed(1234)
+
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+model_Fit_RandForest <- train(classe ~ ., data=trainSet, method="rf",
+                          trControl=controlRF)
+model_Fit_RandForest$finalModel
+```
+
+Calculate the confusion matrix for trainSet
+
+```{r}
+predict_RF_train <- predict(model_Fit_RandForest, newdata=trainSet)
+confusionMatrix(predict_RF_train, trainSet$classe)
+```
+The In sample error = 1 - 1 = 0
+
+Calculate the confusion matrix for testSet
+```{r}
+predict_RF_test <- predict(model_Fit_RandForest, newdata=testSet)
+CM_RF <- confusionMatrix(predict_RF_test, testSet$classe)
+CM_RF
+```
+The out of sample error = 1 - 0.999 = 0.001
+
+
+##Camparison and prediction
+The accuracy for the Generalized Boosted Model is 0.988 and the accuracy for the Random Forest Model is 0.999, so I will use the Random Forest Model to predict for the quiz.
+
+```{r}
+testing_predictors_for_quiz <- testing[,cn[1:length(cn)-1]]
+
+predict(model_Fit_RandForest, newdata=testing_predictors_for_quiz)
+```
+
+
